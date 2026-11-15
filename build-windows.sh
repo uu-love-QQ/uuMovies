@@ -20,6 +20,7 @@ cargo xwin build --release --target x86_64-pc-windows-msvc
 
 echo "=== 3. 生成 Windows 安装引导向导程序 (NSIS Setup) ==="
 mkdir -p "$DIR/dist-windows"
+rm -f "$DIR/dist-windows/"uuMovies_*_x64_Setup.exe
 cp "$DIR/src-tauri/target/x86_64-pc-windows-msvc/release/uumovies.exe" "$DIR/dist-windows/"
 
 cd "$DIR/src-tauri/windows"
