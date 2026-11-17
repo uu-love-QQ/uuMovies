@@ -70,11 +70,20 @@
   3. 安装完成后自动重启新版应用。
 - **非 Windows 平台**：仅提供版本检查，点击更新会打开 Release 页面手动下载。
 
-### 发布新版本流程
+### 发布新版本流程（GitHub Actions 自动发布）
 1. 修改 `src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`package.json` 中的版本号（例如 `0.1.1` → `0.1.2`）。
-2. 执行 `./build-windows.sh` 生成 `dist-windows/uuMovies_<版本>_x64_Setup.exe` 与 `SHA256SUMS.txt`。
-3. 在 GitHub 创建同名标签（如 `v0.1.2`）的 Release，上传 `uuMovies_<版本>_x64_Setup.exe`（建议同时上传 `SHA256SUMS.txt`）。
-4. 旧版本客户端会在下一次检查时发现并自动升级。
+2. 提交后打标签并推送：
+   ```bash
+   git tag -a v0.1.2 -m "uuMovies v0.1.2"
+   git push origin main v0.1.2
+   ```
+3. `.github/workflows/release.yml` 会在 `windows-latest` 上自动执行：前端构建 → `cargo test` → MSVC Release 编译 → `makensis` 生成安装包 → 打包 zip 与 `SHA256SUMS.txt` → 创建 GitHub Release 并上传全部资产。
+4. 旧版本客户端会在下一次检查时发现并自动静默升级。
+
+补充说明：
+- 已存在但尚未发布 Release 的标签（例如 `v0.1.1`），可在仓库 **Actions → Release → Run workflow** 中手动输入该标签补发。
+- CI 产出的资产命名与本地 `./build-windows.sh`（Linux 交叉编译）完全一致：`uuMovies_<版本>_x64_Setup.exe`、`uumovies.exe`、`uumovies_windows_x64.zip`、`SHA256SUMS.txt`。
+- Workflow 会校验标签与 `tauri.conf.json` 版本是否一致，不一致直接失败，避免发布错误版本。
 
 > 只有严格高于当前版本的标签才会触发更新，`v0.1.1-beta` 这类预发布标签不会被当作新版本。
 

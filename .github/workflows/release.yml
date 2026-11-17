@@ -1,0 +1,140 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要构建并发布的标签（例如 v0.1.1）'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name }}-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Windows x64 installer
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: windows-release
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ([string]::IsNullOrWhiteSpace($tag)) { throw '缺少发布标签' }
+          $config = Get-Content -Raw -Path 'src-tauri/tauri.conf.json' | ConvertFrom-Json
+          $tagVersion = $tag.TrimStart('v')
+          if ($config.version -ne $tagVersion) {
+            throw "标签 $tag 与 tauri.conf.json 版本 $($config.version) 不一致"
+          }
+          "version=$($config.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "setup=uuMovies_$($config.version)_x64_Setup.exe" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test --lib -- --skip test_live_source_fetch
+
+      - name: Build Windows executable
+        working-directory: src-tauri
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: Build NSIS installer
+        shell: pwsh
+        working-directory: src-tauri/windows
+        run: |
+          New-Item -ItemType Directory -Force -Path '../../dist-windows' | Out-Null
+          $candidates = @(
+            'C:\Program Files (x86)\NSIS\makensis.exe',
+            'C:\Program Files\NSIS\makensis.exe'
+          )
+          $makensis = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $makensis) {
+            $cmd = Get-Command makensis.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $makensis = $cmd.Source }
+          }
+          if (-not $makensis) { throw '未找到 makensis.exe' }
+          Write-Host "使用 $makensis"
+          & $makensis "-DPRODUCT_VERSION=${{ steps.version.outputs.version }}" installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis 失败: $LASTEXITCODE" }
+
+      - name: Package artifacts
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $setup = '${{ steps.version.outputs.setup }}'
+          Copy-Item 'src-tauri/target/x86_64-pc-windows-msvc/release/uumovies.exe' 'dist-windows/uumovies.exe' -Force
+          if (-not (Test-Path "dist-windows/$setup")) { throw "安装包未生成: $setup" }
+          Compress-Archive -Path 'dist-windows/uumovies.exe', "dist-windows/$setup" -DestinationPath 'dist-windows/uumovies_windows_x64.zip' -Force
+          $lines = foreach ($file in @('dist-windows/uumovies.exe', "dist-windows/$setup")) {
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLower()
+            "$hash  $(Split-Path $file -Leaf)"
+          }
+          Set-Content -Path 'dist-windows/SHA256SUMS.txt' -Value $lines -Encoding utf8NoBOM
+          Get-ChildItem 'dist-windows' | Select-Object Name, Length
+          Get-Content 'dist-windows/SHA256SUMS.txt'
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: uumovies-windows-x64
+          path: |
+            dist-windows/${{ steps.version.outputs.setup }}
+            dist-windows/uumovies.exe
+            dist-windows/uumovies_windows_x64.zip
+            dist-windows/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: uuMovies ${{ steps.version.outputs.version }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist-windows/${{ steps.version.outputs.setup }}
+            dist-windows/uumovies.exe
+            dist-windows/uumovies_windows_x64.zip
+            dist-windows/SHA256SUMS.txt
