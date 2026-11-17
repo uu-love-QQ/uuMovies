@@ -71,7 +71,7 @@ jobs:
 
       - name: Run Rust tests
         working-directory: src-tauri
-        run: cargo test --lib -- --skip test_live_source_fetch
+        run: cargo test --release --lib --target x86_64-pc-windows-msvc -- --skip test_live_source_fetch
 
       - name: Build Windows executable
         working-directory: src-tauri

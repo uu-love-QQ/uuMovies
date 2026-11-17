@@ -9,7 +9,7 @@ Unicode True
 !define PRODUCT_NAME "uuMovies"
 ; Version is injected by build-windows.sh (makensis -DPRODUCT_VERSION=x.y.z)
 !ifndef PRODUCT_VERSION
-  !define PRODUCT_VERSION "0.1.1"
+  !define PRODUCT_VERSION "0.1.2"
 !endif
 !define PRODUCT_PUBLISHER "uuMovies"
 !define PRODUCT_WEB_SITE "https://github.com/uu-love-QQ/uuMovies"
