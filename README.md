@@ -71,11 +71,11 @@
 - **非 Windows 平台**：仅提供版本检查，点击更新会打开 Release 页面手动下载。
 
 ### 发布新版本流程（GitHub Actions 自动发布）
-1. 修改 `src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`package.json` 中的版本号（例如 `0.1.1` → `0.1.2`）。
+1. 修改 `src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`package.json` 中的版本号（例如 `0.1.2` → `0.1.3`）。
 2. 提交后打标签并推送：
    ```bash
-   git tag -a v0.1.2 -m "uuMovies v0.1.2"
-   git push origin main v0.1.2
+   git tag -a v0.1.3 -m "uuMovies v0.1.3"
+   git push origin main v0.1.3
    ```
 3. `.github/workflows/release.yml` 会在 `windows-latest` 上自动执行：前端构建 → `cargo test` → MSVC Release 编译 → `makensis` 生成安装包 → 打包 zip 与 `SHA256SUMS.txt` → 创建 GitHub Release 并上传全部资产。
 4. 旧版本客户端会在下一次检查时发现并自动静默升级。
