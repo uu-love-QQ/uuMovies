@@ -24,7 +24,7 @@ rm -f "$DIR/dist-windows/"uuMovies_*_x64_Setup.exe
 cp "$DIR/src-tauri/target/x86_64-pc-windows-msvc/release/uumovies.exe" "$DIR/dist-windows/"
 
 cd "$DIR/src-tauri/windows"
-makensis "-DPRODUCT_VERSION=${VERSION}" installer.nsi
+makensis -INPUTCHARSET UTF8 "-DPRODUCT_VERSION=${VERSION}" installer.nsi
 
 echo "=== 4. 打包 Windows 压缩包与校验文件 ==="
 cd "$DIR/dist-windows"

@@ -96,7 +96,7 @@ jobs:
           }
           if (-not $makensis) { throw '未找到 makensis.exe' }
           Write-Host "使用 $makensis"
-          & $makensis "-DPRODUCT_VERSION=${{ steps.version.outputs.version }}" installer.nsi
+          & $makensis -INPUTCHARSET UTF8 "-DPRODUCT_VERSION=${{ steps.version.outputs.version }}" installer.nsi
           if ($LASTEXITCODE -ne 0) { throw "makensis 失败: $LASTEXITCODE" }
 
       - name: Package artifacts

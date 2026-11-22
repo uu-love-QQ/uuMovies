@@ -48,6 +48,12 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
   const resumeTimeRef = useRef<number | null>(null);
   const hasResumed = useRef<boolean>(false);
   const hideControlsTimeout = useRef<number | null>(null);
+  const isPlayingRef = useRef<boolean>(false);
+  const showEpisodesDrawerRef = useRef<boolean>(false);
+  const showLineMenuRef = useRef<boolean>(false);
+  const showSpeedMenuRef = useRef<boolean>(false);
+  const isHoveringControlsRef = useRef<boolean>(false);
+  const isDraggingRef = useRef<boolean>(false);
 
   const [playLines, setPlayLines] = useState<PlayLine[]>(vod.play_lines);
   const [currentLineIdx, setCurrentLineIdx] = useState(
@@ -357,18 +363,69 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
     return () => clearInterval(timer);
   }, [isPlaying, saveProgress]);
 
-  // Handle controls auto-hide
+  // Synchronize state to refs to prevent stale closure bugs
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    showEpisodesDrawerRef.current = showEpisodesDrawer;
+  }, [showEpisodesDrawer]);
+
+  useEffect(() => {
+    showLineMenuRef.current = showLineMenu;
+  }, [showLineMenu]);
+
+  useEffect(() => {
+    showSpeedMenuRef.current = showSpeedMenu;
+  }, [showSpeedMenu]);
+
+  useEffect(() => {
+    isDraggingRef.current = isDragging;
+  }, [isDragging]);
+
+  // Handle controls auto-hide with stable callback
   const triggerUserActivity = useCallback(() => {
     setShowControls(true);
     if (hideControlsTimeout.current) {
       window.clearTimeout(hideControlsTimeout.current);
     }
     hideControlsTimeout.current = window.setTimeout(() => {
-      if (isPlaying && !showEpisodesDrawer && !showLineMenu && !showSpeedMenu) {
+      const isVideoPlaying = videoRef.current ? !videoRef.current.paused : isPlayingRef.current;
+      if (
+        isVideoPlaying &&
+        !isHoveringControlsRef.current &&
+        !isDraggingRef.current &&
+        !showEpisodesDrawerRef.current &&
+        !showLineMenuRef.current &&
+        !showSpeedMenuRef.current
+      ) {
         setShowControls(false);
       }
     }, 3500);
-  }, [isPlaying, showEpisodesDrawer, showLineMenu, showSpeedMenu]);
+  }, []);
+
+  // Global capture listeners ensure mousemove, pointermove, clicks always wake controls
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      triggerUserActivity();
+    };
+
+    window.addEventListener('mousemove', handleUserInteraction, { capture: true, passive: true });
+    window.addEventListener('pointermove', handleUserInteraction, { capture: true, passive: true });
+    window.addEventListener('pointerdown', handleUserInteraction, { capture: true, passive: true });
+    window.addEventListener('touchstart', handleUserInteraction, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', handleUserInteraction, { capture: true });
+      window.removeEventListener('pointermove', handleUserInteraction, { capture: true });
+      window.removeEventListener('pointerdown', handleUserInteraction, { capture: true });
+      window.removeEventListener('touchstart', handleUserInteraction, { capture: true });
+      if (hideControlsTimeout.current) {
+        window.clearTimeout(hideControlsTimeout.current);
+      }
+    };
+  }, [triggerUserActivity]);
 
   // Video element events
   const onTimeUpdate = () => {
@@ -406,6 +463,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
   const clickTimerRef = useRef<number | null>(null);
 
   const handleVideoClick = () => {
+    triggerUserActivity();
     if (clickTimerRef.current !== null) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
@@ -418,6 +476,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
   };
 
   const handleVideoDoubleClick = () => {
+    triggerUserActivity();
     if (clickTimerRef.current !== null) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
@@ -446,6 +505,8 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     setIsDragging(true);
+    isDraggingRef.current = true;
+    triggerUserActivity();
     userSeekedRef.current = true;
     hasResumed.current = true;
     const newTime = calculateTimeFromEvent(e.clientX);
@@ -468,6 +529,8 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isDragging) {
       setIsDragging(false);
+      isDraggingRef.current = false;
+      triggerUserActivity();
       userSeekedRef.current = true;
       hasResumed.current = true;
       const finalTime = calculateTimeFromEvent(e.clientX);
@@ -753,8 +816,11 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
     <div
       ref={containerRef}
       onMouseMove={triggerUserActivity}
+      onPointerMove={triggerUserActivity}
       onClick={triggerUserActivity}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black select-none overflow-hidden"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black select-none overflow-hidden ${
+        showControls ? 'cursor-default' : 'cursor-none'
+      }`}
     >
       {/* 2.0x Fast Playback HUD */}
       {isSpeedingUp && (
@@ -767,14 +833,30 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
       {/* HTML5 Video element */}
       <video
         ref={videoRef}
-        className="w-full h-full object-contain cursor-pointer"
-        onClick={handleVideoClick}
-        onDoubleClick={handleVideoDoubleClick}
+        className={`w-full h-full object-contain ${showControls ? 'cursor-default' : 'cursor-none'}`}
         onTimeUpdate={onTimeUpdate}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPlay={() => {
+          setIsPlaying(true);
+          triggerUserActivity();
+        }}
+        onPause={() => {
+          setIsPlaying(false);
+          setShowControls(true);
+          if (hideControlsTimeout.current) {
+            window.clearTimeout(hideControlsTimeout.current);
+          }
+        }}
         onEnded={playNextEpisode}
         playsInline
+      />
+
+      {/* Interactive click/gesture backdrop overlay covering the entire video */}
+      <div
+        className={`absolute inset-0 z-10 ${showControls ? 'cursor-default' : 'cursor-none'}`}
+        onClick={handleVideoClick}
+        onDoubleClick={handleVideoDoubleClick}
+        onMouseMove={triggerUserActivity}
+        onPointerMove={triggerUserActivity}
       />
 
       {/* Resume playback toast notification */}
@@ -839,7 +921,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
       )}
 
       {/* Persistent top window drag strip for frameless desktop window */}
-      {isRunningInTauri() && !isFullscreen && (
+      {isRunningInTauri() && !isFullscreen && showControls && (
         <div
           data-tauri-drag-region
           onMouseDown={handleDragMouseDown}
@@ -853,6 +935,15 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
         data-tauri-drag-region
         onMouseDown={handleDragMouseDown}
         onDoubleClick={handleTopBarDoubleClick}
+        onMouseEnter={() => {
+          isHoveringControlsRef.current = true;
+          triggerUserActivity();
+        }}
+        onMouseLeave={() => {
+          isHoveringControlsRef.current = false;
+          triggerUserActivity();
+        }}
+        onMouseMove={triggerUserActivity}
         className={`absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 py-4 bg-gradient-to-b from-black/80 via-black/30 to-transparent transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
@@ -1010,6 +1101,13 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
       {showEpisodesDrawer && currentLine && (
         <div
           onClick={(e) => e.stopPropagation()}
+          onMouseEnter={() => {
+            isHoveringControlsRef.current = true;
+          }}
+          onMouseLeave={() => {
+            isHoveringControlsRef.current = false;
+            triggerUserActivity();
+          }}
           className="absolute top-16 bottom-24 right-6 w-72 bg-zinc-950/95 border border-zinc-800 rounded-2xl shadow-2xl p-4 flex flex-col z-30 backdrop-blur-xl animate-fade-in"
         >
           <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800 mb-3">
@@ -1039,6 +1137,15 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
 
       {/* Bottom Controls Bar */}
       <div
+        onMouseEnter={() => {
+          isHoveringControlsRef.current = true;
+          triggerUserActivity();
+        }}
+        onMouseLeave={() => {
+          isHoveringControlsRef.current = false;
+          triggerUserActivity();
+        }}
+        onMouseMove={triggerUserActivity}
         className={`absolute bottom-0 inset-x-0 z-20 px-6 py-4 bg-gradient-to-t from-black/95 via-black/50 to-transparent transition-opacity duration-300 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}

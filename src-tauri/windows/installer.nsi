@@ -1,4 +1,4 @@
-Unicode True
+﻿Unicode True
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
@@ -43,7 +43,6 @@ RequestExecutionLevel user
 
 ; Finish page
 !define MUI_FINISHPAGE_RUN "$INSTDIR\uumovies.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "运行 ${PRODUCT_NAME}"
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstaller pages
@@ -55,6 +54,10 @@ RequestExecutionLevel user
 ; Language
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
+
+; Language strings
+LangString UNINSTALL_SHORTCUT_NAME ${LANG_SIMPCHINESE} "卸载 ${PRODUCT_NAME}"
+LangString UNINSTALL_SHORTCUT_NAME ${LANG_ENGLISH} "Uninstall ${PRODUCT_NAME}"
 
 ; --------------------------------
 ; Installer Sections
@@ -69,7 +72,7 @@ Section "MainSection" SEC01
   ; Create Shortcuts
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
   CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk" "$INSTDIR\uumovies.exe" "" "$INSTDIR\uumovies.exe" 0
-  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\卸载 ${PRODUCT_NAME}.lnk" "$INSTDIR\Uninstall.exe"
+  CreateShortcut "$SMPROGRAMS\${PRODUCT_NAME}\$(UNINSTALL_SHORTCUT_NAME).lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\${PRODUCT_NAME}.lnk" "$INSTDIR\uumovies.exe" "" "$INSTDIR\uumovies.exe" 0
 
   ; Create uninstaller
@@ -94,7 +97,9 @@ SectionEnd
 ; --------------------------------
 Section "Uninstall"
   Delete "$DESKTOP\${PRODUCT_NAME}.lnk"
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\$(UNINSTALL_SHORTCUT_NAME).lnk"
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\卸载 ${PRODUCT_NAME}.lnk"
+  Delete "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall ${PRODUCT_NAME}.lnk"
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk"
   RMDir "$SMPROGRAMS\${PRODUCT_NAME}"
 
