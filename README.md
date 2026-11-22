@@ -56,6 +56,11 @@
 ./build-windows.sh
 ```
 
+一键构建 Android APK (Release & Debug)：
+```bash
+./build-android.sh
+```
+
 ---
 
 ## 检查更新与自动更新
@@ -77,12 +82,15 @@
    git tag -a v0.1.3 -m "uuMovies v0.1.3"
    git push origin main v0.1.3
    ```
-3. `.github/workflows/release.yml` 会在 `windows-latest` 上自动执行：前端构建 → `cargo test` → MSVC Release 编译 → `makensis` 生成安装包 → 打包 zip 与 `SHA256SUMS.txt` → 创建 GitHub Release 并上传全部资产。
+3. `.github/workflows/release.yml` 会自动并行执行：
+   - **Windows** (`windows-latest`)：前端构建 → `cargo test` → MSVC Release 编译 → `makensis` 生成安装包 → 打包 zip 与 `SHA256SUMS.txt`。
+   - **Android** (`ubuntu-latest`)：`gradlew test` 单元测试 → 编译 Release 与 Debug APK → 生成 `SHA256SUMS-android.txt`。
+   - **发布**：整合 Windows 与 Android 产物创建 GitHub Release 并上传全部资产。
 4. 旧版本客户端会在下一次检查时发现并自动静默升级。
 
 补充说明：
 - 已存在但尚未发布 Release 的标签（例如 `v0.1.1`），可在仓库 **Actions → Release → Run workflow** 中手动输入该标签补发。
-- CI 产出的资产命名与本地 `./build-windows.sh`（Linux 交叉编译）完全一致：`uuMovies_<版本>_x64_Setup.exe`、`uumovies.exe`、`uumovies_windows_x64.zip`、`SHA256SUMS.txt`。
+- CI 产出的资产命名与本地 `./build-windows.sh`、`./build-android.sh` 完全一致：`uuMovies_<版本>_x64_Setup.exe`、`uumovies.exe`、`uumovies_windows_x64.zip`、`uuMovies_<版本>_release.apk`、`uuMovies_<版本>_debug.apk` 等。
 - Workflow 会校验标签与 `tauri.conf.json` 版本是否一致，不一致直接失败，避免发布错误版本。
 
 > 只有严格高于当前版本的标签才会触发更新，`v0.1.1-beta` 这类预发布标签不会被当作新版本。

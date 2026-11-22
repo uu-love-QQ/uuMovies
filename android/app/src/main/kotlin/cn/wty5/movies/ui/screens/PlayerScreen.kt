@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.ActivityInfo
 import android.media.AudioManager
 import android.net.Uri
-import android.view.WindowManager
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -33,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,7 +54,6 @@ import cn.wty5.movies.cast.DlnaManager
 import cn.wty5.movies.cast.CastProxyServer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -72,10 +71,14 @@ fun PlayerScreen(
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val allSources by repository.sourcesFlow.collectAsState()
-    val playLines = remember { mutableStateListOf<PlayLine>().apply { addAll(vod.playLines) } }
+    val playLines = remember(vod.vodId) { mutableStateListOf<PlayLine>().apply { addAll(vod.playLines) } }
 
-    var currentLineIdx by remember { mutableIntStateOf(initialLineIndex.coerceIn(0, (vod.playLines.size - 1).coerceAtLeast(0))) }
-    var currentEpIdx by remember { mutableIntStateOf(initialEpisodeIndex) }
+    var currentLineIdx by remember(vod.vodId) {
+        mutableIntStateOf(initialLineIndex.coerceIn(0, (vod.playLines.size - 1).coerceAtLeast(0)))
+    }
+    var currentEpIdx by remember(vod.vodId) {
+        mutableIntStateOf(initialEpisodeIndex)
+    }
 
     // Discover cross-station alternative lines from other enabled sources
     LaunchedEffect(vod.vodId) {
@@ -106,7 +109,6 @@ fun PlayerScreen(
     // HUD overlays
     var volumeHud by remember { mutableStateOf<Int?>(null) }
     var brightnessHud by remember { mutableStateOf<Int?>(null) }
-    var seekPreviewTime by remember { mutableStateOf<Long?>(null) }
     var showEpisodesDialog by remember { mutableStateOf(false) }
     var showLinesDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
@@ -124,13 +126,20 @@ fun PlayerScreen(
             .build()
     }
 
-    // Initialize ExoPlayer with M3U8 ad filter
+    // Initialize ExoPlayer with standard DefaultDataSource wrapping OkHttpDataSource
     val exoPlayer = remember {
         val okHttpDataSourceFactory = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(adFilteringHttpClient)
-        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(okHttpDataSourceFactory)
+            .setUserAgent("Mozilla/5.0 (Linux; Android 14; Mobile) Chrome/128.0.0.0")
 
-        ExoPlayer.Builder(context)
+        val defaultDataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(
+            context.applicationContext,
+            okHttpDataSourceFactory
+        )
+
+        val mediaSourceFactory = androidx.media3.exoplayer.source.DefaultMediaSourceFactory(context.applicationContext)
+            .setDataSourceFactory(defaultDataSourceFactory)
+
+        ExoPlayer.Builder(context.applicationContext)
             .setMediaSourceFactory(mediaSourceFactory)
             .build().apply {
                 playWhenReady = true
@@ -139,25 +148,29 @@ fun PlayerScreen(
 
     // Auto-save history helper
     fun saveProgressNow() {
-        val ep = currentEpisode ?: return
-        val posSec = exoPlayer.currentPosition / 1000
-        val durSec = (exoPlayer.duration.takeIf { it > 0 } ?: 0L) / 1000
-        if (posSec > 0) {
-            repository.saveHistory(
-                PlayHistoryItem(
-                    vodId = vod.vodId,
-                    sourceId = vod.sourceId ?: "",
-                    sourceName = vod.sourceName ?: "默认源",
-                    vodName = vod.vodName,
-                    vodPic = vod.vodPic,
-                    lineIndex = currentLineIdx,
-                    lineTitle = currentLine?.title ?: "默认线路",
-                    episodeIndex = currentEpIdx,
-                    episodeName = ep.name,
-                    progressSeconds = posSec,
-                    durationSeconds = durSec
+        try {
+            val ep = currentEpisode ?: return
+            val posSec = exoPlayer.currentPosition / 1000
+            val durSec = (exoPlayer.duration.takeIf { it > 0 } ?: 0L) / 1000
+            if (posSec > 0) {
+                repository.saveHistory(
+                    PlayHistoryItem(
+                        vodId = vod.vodId,
+                        sourceId = vod.sourceId ?: "",
+                        sourceName = vod.sourceName ?: "默认源",
+                        vodName = vod.vodName,
+                        vodPic = vod.vodPic,
+                        lineIndex = currentLineIdx,
+                        lineTitle = currentLine?.title ?: "默认线路",
+                        episodeIndex = currentEpIdx,
+                        episodeName = ep.name,
+                        progressSeconds = posSec,
+                        durationSeconds = durSec
+                    )
                 )
-            )
+            }
+        } catch (e: Exception) {
+            // Ignore during disposal
         }
     }
 
@@ -175,9 +188,11 @@ fun PlayerScreen(
                     exoPlayer.seekTo(initialTimeSeconds * 1000)
                 }
                 exoPlayer.play()
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "播放失败，请尝试换线"
+            } catch (t: Throwable) {
+                errorMessage = t.message ?: "播放失败，请尝试换线"
             }
+        } else if (currentEpisode != null) {
+            errorMessage = "该剧集播放地址为空，请尝试换线"
         }
     }
 
@@ -195,20 +210,34 @@ fun PlayerScreen(
         exoPlayer.addListener(listener)
 
         onDispose {
-            saveProgressNow()
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            CastProxyServer.stop()
+            try {
+                saveProgressNow()
+                exoPlayer.removeListener(listener)
+                exoPlayer.stop()
+                exoPlayer.clearMediaItems()
+                exoPlayer.release()
+            } catch (e: Exception) {
+                // Ignore
+            }
+            try {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                CastProxyServer.stop()
+            } catch (e: Exception) {
+                // Ignore
+            }
         }
     }
 
     // Position updater loop & periodic autosave
-    LaunchedEffect(Unit) {
+    LaunchedEffect(exoPlayer) {
         while (true) {
-            currentPosition = exoPlayer.currentPosition.coerceAtLeast(0L)
-            duration = exoPlayer.duration.coerceAtLeast(0L)
-            saveProgressNow()
+            try {
+                currentPosition = exoPlayer.currentPosition.coerceAtLeast(0L)
+                duration = exoPlayer.duration.coerceAtLeast(0L)
+                saveProgressNow()
+            } catch (e: Exception) {
+                break
+            }
             delay(1000)
         }
     }
@@ -254,7 +283,6 @@ fun PlayerScreen(
                         val delta = dragAmount.y / size.height
 
                         if (isRightSide) {
-                            // Volume control on right side
                             val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                             val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                             val changeAmount = (-dragAmount.y / 40).toInt()
@@ -264,7 +292,6 @@ fun PlayerScreen(
                                 volumeHud = ((target.toFloat() / maxVol) * 100).toInt()
                             }
                         } else {
-                            // Brightness control on left side
                             val lp = activity?.window?.attributes
                             if (lp != null) {
                                 val curBrightness = if (lp.screenBrightness < 0) 0.5f else lp.screenBrightness
@@ -279,16 +306,82 @@ fun PlayerScreen(
             }
             .clickable { showControls = !showControls }
     ) {
-        // Video Surface
+        // Video Surface via AndroidView with safe lifecycle onRelease
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
+                    setEnableComposeSurfaceSyncWorkaround(true)
                     player = exoPlayer
                     useController = false
                 }
             },
+            update = { playerView ->
+                if (playerView.player != exoPlayer) {
+                    playerView.player = exoPlayer
+                }
+            },
+            onRelease = { playerView ->
+                playerView.player = null
+            },
             modifier = Modifier.fillMaxSize()
         )
+
+        // Error message banner overlay
+        if (errorMessage != null) {
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xDD200000)),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(24.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = errorMessage ?: "播放失败",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { showLinesDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("切换线路", fontSize = 12.sp)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val url = currentEpisode?.url?.trim()
+                                if (!url.isNullOrBlank()) {
+                                    errorMessage = null
+                                    try {
+                                        val mediaItem = MediaItem.fromUri(Uri.parse(url))
+                                        exoPlayer.setMediaItem(mediaItem)
+                                        exoPlayer.prepare()
+                                        exoPlayer.play()
+                                    } catch (e: Exception) {
+                                        errorMessage = e.message ?: "重试失败"
+                                    }
+                                }
+                            }
+                        ) {
+                            Text("重试", color = Color.White, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        }
 
         // Centered Volume HUD Overlay
         AnimatedVisibility(

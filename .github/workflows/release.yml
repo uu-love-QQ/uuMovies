@@ -126,6 +126,109 @@ jobs:
             dist-windows/SHA256SUMS.txt
           if-no-files-found: error
 
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          tag="${RELEASE_TAG}"
+          if [ -z "$tag" ]; then
+            echo "缺少发布标签" >&2
+            exit 1
+          fi
+          tag_version="${tag#v}"
+          echo "version=${tag_version}" >> $GITHUB_OUTPUT
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew test --no-daemon
+
+      - name: Build Android APK
+        working-directory: android
+        run: ./gradlew assembleRelease assembleDebug --no-daemon
+
+      - name: Package Android artifacts
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          mkdir -p dist-android
+          cp android/app/build/outputs/apk/release/app-release.apk "dist-android/uuMovies_${version}_release.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist-android/uuMovies_${version}_debug.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "dist-android/uuMovies_release.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist-android/uuMovies_debug.apk"
+          cd dist-android
+          sha256sum "uuMovies_${version}_release.apk" "uuMovies_${version}_debug.apk" uuMovies_release.apk uuMovies_debug.apk > SHA256SUMS-android.txt
+          cat SHA256SUMS-android.txt
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: uumovies-android
+          path: |
+            dist-android/uuMovies_${{ steps.version.outputs.version }}_release.apk
+            dist-android/uuMovies_${{ steps.version.outputs.version }}_debug.apk
+            dist-android/uuMovies_release.apk
+            dist-android/uuMovies_debug.apk
+            dist-android/SHA256SUMS-android.txt
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          tag="${RELEASE_TAG}"
+          if [ -z "$tag" ]; then
+            echo "缺少发布标签" >&2
+            exit 1
+          fi
+          echo "version=${tag#v}" >> $GITHUB_OUTPUT
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: uumovies-windows-x64
+          path: release-assets
+
+      - name: Download Android artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: uumovies-android
+          path: release-assets
+
+      - name: List release assets
+        run: |
+          ls -lh release-assets
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -133,8 +236,4 @@ jobs:
           name: uuMovies ${{ steps.version.outputs.version }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: |
-            dist-windows/${{ steps.version.outputs.setup }}
-            dist-windows/uumovies.exe
-            dist-windows/uumovies_windows_x64.zip
-            dist-windows/SHA256SUMS.txt
+          files: release-assets/*
