@@ -109,6 +109,7 @@ data class PlayHistoryItem(
     val lineTitle: String = "默认线路",
     val episodeIndex: Int = 0,
     val episodeName: String = "第1集",
+    val playUrl: String? = null,
     val progressSeconds: Long = 0,
     val durationSeconds: Long = 0,
     val updatedAt: Long = System.currentTimeMillis()

@@ -5,7 +5,7 @@ import {
   Trash2,
   Inbox,
 } from 'lucide-react';
-import type { PlayHistoryItem, VodItem } from '../types';
+import type { PlayHistoryItem, VodItem, PlayLine, Episode } from '../types';
 import { api } from '../services/api';
 import { Button } from './ui/button';
 import { LazyImage } from './ui/LazyImage';
@@ -63,16 +63,52 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
     return `${Math.floor(diff / 86400)} 天前`;
   };
 
-  const constructVodItem = (h: PlayHistoryItem): VodItem => ({
-    vod_id: h.vod_id,
-    vod_name: h.vod_name,
-    type_id: '',
-    type_name: '',
-    vod_pic: h.vod_pic,
-    source_id: h.source_id,
-    source_name: h.source_name,
-    play_lines: [],
-  });
+  const constructVodItem = (h: PlayHistoryItem, withFallbackLine = false): VodItem => {
+    let play_lines: PlayLine[] = [];
+    if (withFallbackLine && h.play_url) {
+      const epIdx = h.episode_index || 0;
+      const lineIdx = h.line_index || 0;
+      const episodes: Episode[] = [];
+      for (let i = 0; i <= epIdx; i++) {
+        if (i === epIdx) {
+          episodes.push({
+            name: h.episode_name || `第${i + 1}集`,
+            url: h.play_url,
+          });
+        } else {
+          episodes.push({
+            name: `第${i + 1}集`,
+            url: '',
+          });
+        }
+      }
+      for (let l = 0; l <= lineIdx; l++) {
+        if (l === lineIdx) {
+          play_lines.push({
+            from: h.source_id,
+            title: '历史线路',
+            episodes,
+          });
+        } else {
+          play_lines.push({
+            from: 'default',
+            title: `线路 ${l + 1}`,
+            episodes: [],
+          });
+        }
+      }
+    }
+    return {
+      vod_id: h.vod_id,
+      vod_name: h.vod_name,
+      type_id: '',
+      type_name: '',
+      vod_pic: h.vod_pic,
+      source_id: h.source_id,
+      source_name: h.source_name,
+      play_lines,
+    };
+  };
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 select-none animate-fade-in">
@@ -120,7 +156,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
               >
                 {/* Thumbnail */}
                 <div
-                  onClick={() => onSelectVod(vod)}
+                  onClick={() =>
+                    onResumePlay(
+                      constructVodItem(item, true),
+                      item.line_index,
+                      item.episode_index,
+                      item.progress_seconds
+                    )
+                  }
                   className="relative flex-shrink-0 w-20 aspect-[2/3] rounded-xl overflow-hidden bg-secondary border border-border cursor-pointer"
                 >
                   <LazyImage
@@ -184,7 +227,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                       variant="default"
                       size="sm"
                       onClick={() =>
-                        onResumePlay(vod, item.line_index, item.episode_index, item.progress_seconds)
+                        onResumePlay(
+                          constructVodItem(item, true),
+                          item.line_index,
+                          item.episode_index,
+                          item.progress_seconds
+                        )
                       }
                       className="h-7 px-2.5 text-xs gap-1"
                     >

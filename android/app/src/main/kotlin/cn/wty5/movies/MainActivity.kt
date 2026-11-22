@@ -24,8 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import cn.wty5.movies.api.AppleCmsClient
-import cn.wty5.movies.model.PlayHistoryItem
-import cn.wty5.movies.model.VodItem
+import cn.wty5.movies.model.*
 import cn.wty5.movies.repository.MovieRepository
 import cn.wty5.movies.ui.screens.*
 import cn.wty5.movies.ui.theme.UuMoviesTheme
@@ -252,12 +251,34 @@ fun MainApp(
                         LibraryScreen(
                             repository = repository,
                             onResumeHistory = { h: PlayHistoryItem ->
+                                val fallbackLines = if (!h.playUrl.isNullOrBlank()) {
+                                    val episodes = mutableListOf<Episode>()
+                                    for (i in 0..h.episodeIndex) {
+                                        if (i == h.episodeIndex) {
+                                            episodes.add(Episode(name = h.episodeName, url = h.playUrl))
+                                        } else {
+                                            episodes.add(Episode(name = "第${i + 1}集", url = ""))
+                                        }
+                                    }
+                                    val lines = mutableListOf<PlayLine>()
+                                    for (l in 0..h.lineIndex) {
+                                        if (l == h.lineIndex) {
+                                            lines.add(PlayLine(from = h.sourceId, title = h.lineTitle.ifBlank { "历史线路" }, episodes = episodes))
+                                        } else {
+                                            lines.add(PlayLine(from = "default", title = "线路 ${l + 1}", episodes = emptyList<Episode>()))
+                                        }
+                                    }
+                                    lines
+                                } else {
+                                    emptyList<PlayLine>()
+                                }
                                 val vod = VodItem(
                                     vodId = h.vodId,
                                     vodName = h.vodName,
                                     vodPic = h.vodPic,
                                     sourceId = h.sourceId,
-                                    sourceName = h.sourceName
+                                    sourceName = h.sourceName,
+                                    playLines = fallbackLines
                                 )
                                 playVod(vod, h.lineIndex, h.episodeIndex, h.progressSeconds)
                             },

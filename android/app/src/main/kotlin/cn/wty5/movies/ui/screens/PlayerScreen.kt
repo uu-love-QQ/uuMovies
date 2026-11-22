@@ -90,6 +90,7 @@ fun PlayerScreen(
     val allSources by repository.sourcesFlow.collectAsState()
     val favorites by repository.favoritesFlow.collectAsState()
     val playLines = remember(vod.vodId) { mutableStateListOf<PlayLine>().apply { addAll(vod.safePlayLines) } }
+    var currentVod by remember(vod.vodId) { mutableStateOf(vod) }
 
     var currentLineIdx by remember(vod.vodId) {
         val lineCount = vod.safePlayLines.size
@@ -124,6 +125,34 @@ fun PlayerScreen(
             }
         } catch (e: Exception) {
             // Ignore
+        }
+    }
+
+    // Asynchronously fetch full VOD details in background if opened with fallback lines or missing metadata
+    LaunchedEffect(vod.vodId) {
+        val isFallback = currentVod.vodContent.isNullOrBlank() ||
+            playLines.any { it.title == "历史线路" || it.safeEpisodes.any { ep -> ep.url.isBlank() } }
+        if (isFallback) {
+            val targetSource = allSources.find { it.id == vod.sourceId } ?: repository.activeSourceFlow.value
+            if (targetSource != null) {
+                try {
+                    val detail = client.fetchVodDetail(targetSource, vod.vodId)
+                    currentVod = detail
+                    if (detail.safePlayLines.isNotEmpty()) {
+                        val currentIsFallback = playLines.any { it.title == "历史线路" || it.safeEpisodes.any { ep -> ep.url.isBlank() } }
+                        if (currentIsFallback || playLines.isEmpty()) {
+                            val crossLines = playLines.filter { it.title != "历史线路" && !it.safeEpisodes.any { ep -> ep.url.isBlank() } }
+                            val existingKeys = detail.safePlayLines.map { "${it.from}__${it.title}" }.toSet()
+                            val toKeep = crossLines.filter { !existingKeys.contains("${it.from}__${it.title}") }
+                            playLines.clear()
+                            playLines.addAll(detail.safePlayLines)
+                            playLines.addAll(toKeep)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore background load error
+                }
+            }
         }
     }
 
@@ -195,6 +224,7 @@ fun PlayerScreen(
                         lineTitle = currentLine?.title ?: "默认线路",
                         episodeIndex = currentEpIdx,
                         episodeName = ep.name,
+                        playUrl = ep.url,
                         progressSeconds = posSec,
                         durationSeconds = durSec
                     )
@@ -205,9 +235,16 @@ fun PlayerScreen(
         }
     }
 
+    var activeUrl by remember { mutableStateOf<String?>(null) }
+    var pendingSeekTime by remember { mutableStateOf<Long?>(initialTimeSeconds.takeIf { it > 0 }) }
+
     // Load stream URL
     LaunchedEffect(currentEpisode?.url) {
         val url = currentEpisode?.url?.trim()
+        if (url == activeUrl && exoPlayer.playbackState != androidx.media3.common.Player.STATE_IDLE) {
+            return@LaunchedEffect
+        }
+        activeUrl = url
         if (!url.isNullOrBlank()) {
             errorMessage = null
             try {
@@ -215,8 +252,10 @@ fun PlayerScreen(
                 exoPlayer.setMediaItem(mediaItem)
                 exoPlayer.prepare()
 
-                if (initialTimeSeconds > 0) {
-                    exoPlayer.seekTo(initialTimeSeconds * 1000)
+                val seekSec = pendingSeekTime
+                if (seekSec != null && seekSec > 0) {
+                    exoPlayer.seekTo(seekSec * 1000)
+                    pendingSeekTime = null
                 }
                 exoPlayer.play()
             } catch (t: Throwable) {
@@ -757,14 +796,14 @@ fun PlayerScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (!vod.vodRemarks.isNullOrBlank()) {
+                        if (!currentVod.vodRemarks.isNullOrBlank()) {
                             Surface(
                                 shape = RoundedCornerShape(4.dp),
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                             ) {
                                 Text(
-                                    text = vod.vodRemarks,
+                                    text = currentVod.vodRemarks ?: "",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -772,7 +811,7 @@ fun PlayerScreen(
                             }
                         }
 
-                        if (!vod.vodScore.isNullOrBlank() && vod.vodScore != "0" && vod.vodScore != "0.0") {
+                        if (!currentVod.vodScore.isNullOrBlank() && currentVod.vodScore != "0" && currentVod.vodScore != "0.0") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -784,7 +823,7 @@ fun PlayerScreen(
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = vod.vodScore,
+                                    text = currentVod.vodScore ?: "",
                                     color = Color(0xFFFFB800),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
@@ -793,9 +832,9 @@ fun PlayerScreen(
                         }
 
                         val tags = listOfNotNull(
-                            vod.typeName.takeIf { it.isNotBlank() },
-                            vod.vodYear.takeIf { !it.isNullOrBlank() },
-                            vod.vodArea.takeIf { !it.isNullOrBlank() }
+                            currentVod.typeName.takeIf { it.isNotBlank() },
+                            currentVod.vodYear.takeIf { !it.isNullOrBlank() },
+                            currentVod.vodArea.takeIf { !it.isNullOrBlank() }
                         ).joinToString(" · ")
 
                         if (tags.isNotBlank()) {
@@ -823,9 +862,9 @@ fun PlayerScreen(
                                     sourceId = vod.sourceId ?: "",
                                     sourceName = vod.sourceName ?: "默认源",
                                     vodName = vod.vodName,
-                                    vodPic = vod.vodPic,
-                                    typeName = vod.typeName,
-                                    vodRemarks = vod.vodRemarks
+                                    vodPic = currentVod.vodPic ?: vod.vodPic,
+                                    typeName = currentVod.typeName,
+                                    vodRemarks = currentVod.vodRemarks
                                 )
                             )
                         },
@@ -981,11 +1020,11 @@ fun PlayerScreen(
                 }
 
                 // Synopsis & Cast Details
-                val cleanContent = remember(vod.vodContent) {
-                    vod.vodContent?.replace(Regex("<[^>]*>"), "")?.trim()
+                val cleanContent = remember(currentVod.vodContent) {
+                    currentVod.vodContent?.replace(Regex("<[^>]*>"), "")?.trim()
                 }
 
-                if (!cleanContent.isNullOrBlank() || !vod.vodActor.isNullOrBlank() || !vod.vodDirector.isNullOrBlank()) {
+                if (!cleanContent.isNullOrBlank() || !currentVod.vodActor.isNullOrBlank() || !currentVod.vodDirector.isNullOrBlank()) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = "影片简介",
@@ -994,17 +1033,17 @@ fun PlayerScreen(
                             color = MaterialTheme.colorScheme.onBackground
                         )
 
-                        if (!vod.vodDirector.isNullOrBlank()) {
+                        if (!currentVod.vodDirector.isNullOrBlank()) {
                             Text(
-                                text = "导演：${vod.vodDirector}",
+                                text = "导演：${currentVod.vodDirector}",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
-                        if (!vod.vodActor.isNullOrBlank()) {
+                        if (!currentVod.vodActor.isNullOrBlank()) {
                             Text(
-                                text = "主演：${vod.vodActor}",
+                                text = "主演：${currentVod.vodActor}",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

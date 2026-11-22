@@ -224,18 +224,40 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
     }).catch(console.error);
   }, []);
 
-  // Fetch full details if metadata is missing (actors, director, synopsis, etc.)
+  // Fetch full details if metadata is missing (actors, director, synopsis, etc.) or if lines are fallback
   useEffect(() => {
     let isMounted = true;
+    const isFallbackLines =
+      !vod.play_lines ||
+      vod.play_lines.length === 0 ||
+      vod.play_lines.some((l) => l.title === '历史线路' || l.episodes.some((e) => !e.url));
+
     if (
       vod.source_id &&
-      (!vod.vod_content || !vod.vod_actor || !vod.play_lines || vod.play_lines.length === 0)
+      (!vod.vod_content || !vod.vod_actor || isFallbackLines)
     ) {
       api.fetchVodDetail(vod.source_id, vod.vod_id).then((detail) => {
         if (!isMounted) return;
         setFullVod(detail);
-        if (detail.play_lines && detail.play_lines.length > 0 && playLines.length === 0) {
-          setPlayLines(detail.play_lines);
+        if (detail.play_lines && detail.play_lines.length > 0) {
+          setPlayLines((prev) => {
+            const isFallback =
+              prev.length === 0 ||
+              prev.some((l) => l.title === '历史线路' || l.episodes.some((e) => !e.url));
+            if (isFallback) {
+              const crossLines = prev.filter(
+                (l) => l.title !== '历史线路' && !l.episodes.some((e) => !e.url)
+              );
+              const existingKeys = new Set(
+                detail.play_lines.map((l) => `${l.from || ''}__${l.title || ''}`)
+              );
+              const toKeep = crossLines.filter(
+                (l) => !existingKeys.has(`${l.from || ''}__${l.title || ''}`)
+              );
+              return [...detail.play_lines, ...toKeep];
+            }
+            return prev;
+          });
         }
       }).catch(console.error);
     }
