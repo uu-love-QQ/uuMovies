@@ -52,6 +52,7 @@ import cn.wty5.movies.repository.MovieRepository
 import cn.wty5.movies.cast.DlnaDevice
 import cn.wty5.movies.cast.DlnaManager
 import cn.wty5.movies.cast.CastProxyServer
+import cn.wty5.movies.ui.theme.DarkColorScheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -71,10 +72,11 @@ fun PlayerScreen(
     val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
 
     val allSources by repository.sourcesFlow.collectAsState()
-    val playLines = remember(vod.vodId) { mutableStateListOf<PlayLine>().apply { addAll(vod.playLines) } }
+    val playLines = remember(vod.vodId) { mutableStateListOf<PlayLine>().apply { addAll(vod.safePlayLines) } }
 
     var currentLineIdx by remember(vod.vodId) {
-        mutableIntStateOf(initialLineIndex.coerceIn(0, (vod.playLines.size - 1).coerceAtLeast(0)))
+        val lineCount = vod.safePlayLines.size
+        mutableIntStateOf(initialLineIndex.coerceIn(0, (lineCount - 1).coerceAtLeast(0)))
     }
     var currentEpIdx by remember(vod.vodId) {
         mutableIntStateOf(initialEpisodeIndex)
@@ -96,7 +98,7 @@ fun PlayerScreen(
     }
 
     val currentLine: PlayLine? = playLines.getOrNull(currentLineIdx) ?: playLines.firstOrNull()
-    val currentEpisode: Episode? = currentLine?.episodes?.getOrNull(currentEpIdx) ?: currentLine?.episodes?.firstOrNull()
+    val currentEpisode: Episode? = currentLine?.safeEpisodes?.getOrNull(currentEpIdx) ?: currentLine?.safeEpisodes?.firstOrNull()
 
     // Player state
     var isPlaying by remember { mutableStateOf(true) }
@@ -261,11 +263,12 @@ fun PlayerScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .pointerInput(Unit) {
+    MaterialTheme(colorScheme = DarkColorScheme) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .pointerInput(Unit) {
                 var totalDragY = 0f
                 var isRightSide = false
                 detectDragGestures(
@@ -647,7 +650,7 @@ fun PlayerScreen(
                 ) {
                     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                         Text(
-                            text = "剧集列表 (${currentLine.episodes.size})",
+                            text = "剧集列表 (${currentLine.safeEpisodes.size})",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
@@ -659,7 +662,7 @@ fun PlayerScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            itemsIndexed(currentLine.episodes) { idx, ep ->
+                            itemsIndexed(currentLine.safeEpisodes) { idx, ep ->
                                 val isCur = idx == currentEpIdx
                                 Button(
                                     onClick = {
@@ -715,7 +718,7 @@ fun PlayerScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(text = line.title, color = Color.White, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
-                                    Text(text = "${line.episodes.size} 集", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                                    Text(text = "${line.safeEpisodes.size} 集", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
                                 }
                             }
                         }
@@ -779,6 +782,7 @@ fun PlayerScreen(
             )
         }
     }
+}
 }
 
 private fun formatTime(sec: Long): String {

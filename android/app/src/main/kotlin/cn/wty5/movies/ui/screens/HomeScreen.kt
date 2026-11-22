@@ -41,7 +41,7 @@ fun HomeScreen(
 
     // Resolve visible categories (filter out 18+ if adult mode is off)
     val displayCategories = remember(taxonomy) {
-        val list = taxonomy.categories.toMutableList()
+        val list = taxonomy.safeCategories.toMutableList()
         if (!taxonomy.adultMode) {
             list.removeAll { it.bindTags.contains("#18plus") || it.id == "18plus" }
         }
@@ -68,10 +68,10 @@ fun HomeScreen(
 
         val matched = classes.filter { c ->
             var matchedTag: String? = null
-            activeSource?.categoryMapping?.forEach { (tag, ids) ->
+            activeSource?.safeCategoryMapping?.forEach { (tag, ids) ->
                 if (ids.contains(c.typeId)) matchedTag = tag
             }
-            if (bindTags.contains("#18plus") && activeSource?.adultTypeIds?.contains(c.typeId) == true) {
+            if (bindTags.contains("#18plus") && activeSource?.safeAdultTypeIds?.contains(c.typeId) == true) {
                 true
             } else {
                 matchedTag != null && bindTags.contains(matchedTag)
@@ -105,11 +105,11 @@ fun HomeScreen(
                                 typeId = effectiveTypeId,
                                 page = currentPage
                             )
-                            items = res.list
+                            items = res.safeList
                             totalCount = res.total
                             pageCount = res.pagecount
-                            if (res.classes.isNotEmpty()) {
-                                classes = res.classes
+                            if (res.safeClasses.isNotEmpty()) {
+                                classes = res.safeClasses
                             }
                         } catch (e: Exception) {
                             errorMessage = e.message ?: "加载影片失败"

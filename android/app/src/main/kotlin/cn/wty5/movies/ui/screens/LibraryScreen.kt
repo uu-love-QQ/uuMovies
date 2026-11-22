@@ -154,7 +154,8 @@ fun HistoryItemCard(
             .fillMaxWidth()
             .clickable(onClick = onResume),
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier
@@ -168,7 +169,7 @@ fun HistoryItemCard(
                     .width(64.dp)
                     .aspectRatio(0.7f)
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFF222426))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 if (!item.vodPic.isNullOrBlank()) {
                     AsyncImage(

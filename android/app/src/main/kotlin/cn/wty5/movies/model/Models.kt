@@ -12,7 +12,12 @@ data class Source(
     @SerializedName("adult_type_ids") val adultTypeIds: List<String> = emptyList(),
     @SerializedName("category_mapping") val categoryMapping: Map<String, List<String>> = emptyMap(),
     @SerializedName("subscription_id") val subscriptionId: String? = null
-)
+) {
+    val safeAdultTypeIds: List<String>
+        get() = adultTypeIds ?: emptyList()
+    val safeCategoryMapping: Map<String, List<String>>
+        get() = categoryMapping ?: emptyMap()
+}
 
 data class LocalCategory(
     val id: String,
@@ -25,7 +30,14 @@ data class UserTaxonomyConfig(
     val categories: List<LocalCategory> = emptyList(),
     @SerializedName("blocked_tags") val blockedTags: List<String> = emptyList(),
     @SerializedName("blocked_type_ids") val blockedTypeIds: List<String> = emptyList()
-)
+) {
+    val safeCategories: List<LocalCategory>
+        get() = categories ?: emptyList()
+    val safeBlockedTags: List<String>
+        get() = blockedTags ?: emptyList()
+    val safeBlockedTypeIds: List<String>
+        get() = blockedTypeIds ?: emptyList()
+}
 
 data class Category(
     @SerializedName("type_id") val typeId: String,
@@ -42,7 +54,10 @@ data class PlayLine(
     val from: String,
     val title: String,
     val episodes: List<Episode> = emptyList()
-)
+) {
+    val safeEpisodes: List<Episode>
+        get() = episodes ?: emptyList()
+}
 
 data class VodItem(
     @SerializedName("vod_id") val vodId: String,
@@ -65,7 +80,10 @@ data class VodItem(
     val playLines: List<PlayLine> = emptyList(),
     var sourceId: String? = null,
     var sourceName: String? = null
-)
+) {
+    val safePlayLines: List<PlayLine>
+        get() = playLines ?: emptyList()
+}
 
 data class VodResponse(
     val page: Int = 1,
@@ -74,7 +92,12 @@ data class VodResponse(
     val total: Int = 0,
     val list: List<VodItem> = emptyList(),
     @SerializedName("class") val classes: List<Category> = emptyList()
-)
+) {
+    val safeList: List<VodItem>
+        get() = list ?: emptyList()
+    val safeClasses: List<Category>
+        get() = classes ?: emptyList()
+}
 
 data class PlayHistoryItem(
     val vodId: String,

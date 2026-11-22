@@ -34,7 +34,7 @@ fun VodCard(
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -43,7 +43,7 @@ fun VodCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.7f)
-                    .background(Color(0xFF1E2022))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 if (!vod.vodPic.isNullOrBlank()) {
                     AsyncImage(

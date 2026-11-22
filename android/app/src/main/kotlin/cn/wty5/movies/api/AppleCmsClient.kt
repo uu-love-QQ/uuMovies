@@ -50,10 +50,10 @@ class AppleCmsClient {
 
                 for (res in responses) {
                     totalSum += res.total
-                    for (c in res.classes) {
+                    for (c in res.safeClasses) {
                         if (seenClassIds.add(c.typeId)) combinedClasses.add(c)
                     }
-                    for (v in res.list) {
+                    for (v in res.safeList) {
                         if (seenVodIds.add(v.vodId)) {
                             v.sourceId = source.id
                             v.sourceName = source.name
@@ -111,7 +111,7 @@ class AppleCmsClient {
         val body = response.body?.string() ?: throw Exception("响应为空")
         val parsed = gson.fromJson(body, VodResponse::class.java)
 
-        parsed.list.forEach {
+        parsed.safeList.forEach {
             it.sourceId = source.id
             it.sourceName = source.name
         }
@@ -132,7 +132,7 @@ class AppleCmsClient {
         val body = response.body?.string() ?: throw Exception("详情响应为空")
         val parsed = gson.fromJson(body, VodResponse::class.java)
 
-        val item = parsed.list.firstOrNull() ?: throw Exception("未找到影片详情")
+        val item = parsed.safeList.firstOrNull() ?: throw Exception("未找到影片详情")
         item.sourceId = source.id
         item.sourceName = source.name
 
@@ -157,7 +157,7 @@ class AppleCmsClient {
         val response = httpClient.newCall(request).execute()
         val body = response.body?.string() ?: return@withContext emptyList()
         val parsed = gson.fromJson(body, VodResponse::class.java)
-        parsed.classes
+        parsed.safeClasses
     }
 
     suspend fun testSource(source: Source): TestResult = withContext(Dispatchers.IO) {
@@ -192,7 +192,7 @@ class AppleCmsClient {
             async {
                 try {
                     val res = fetchVodList(source = source, page = 1, keyword = keyword)
-                    res.list
+                    res.safeList
                 } catch (e: Exception) {
                     emptyList<VodItem>()
                 }
@@ -220,11 +220,11 @@ class AppleCmsClient {
             async {
                 try {
                     val searchRes = fetchVodList(source = src, page = 1, keyword = vodName)
-                    val matchedItem = searchRes.list.firstOrNull { it.vodName == vodName }
-                        ?: searchRes.list.firstOrNull { it.vodName.contains(vodName) || vodName.contains(it.vodName) }
+                    val matchedItem = searchRes.safeList.firstOrNull { it.vodName == vodName }
+                        ?: searchRes.safeList.firstOrNull { it.vodName.contains(vodName) || vodName.contains(it.vodName) }
                     if (matchedItem != null) {
                         val detail = fetchVodDetail(source = src, vodId = matchedItem.vodId)
-                        detail.playLines.map { line ->
+                        detail.safePlayLines.map { line ->
                             line.copy(
                                 title = "${src.name} · ${line.title}"
                             )
@@ -240,7 +240,7 @@ class AppleCmsClient {
         deferredList.awaitAll().flatten()
     }
 
-    private fun parsePlayLines(playFrom: String, playUrl: String): List<PlayLine> {
+    fun parsePlayLines(playFrom: String, playUrl: String): List<PlayLine> {
         val froms = playFrom.split("$$$").map { it.trim() }
         val urlGroups = playUrl.split("$$$").map { it.trim() }
         val lines = mutableListOf<PlayLine>()

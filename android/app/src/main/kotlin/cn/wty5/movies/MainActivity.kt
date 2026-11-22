@@ -82,15 +82,21 @@ fun MainApp(
     val playVod: (VodItem, Int, Int, Long) -> Unit = { item, lineIdx, epIdx, initialSec ->
         coroutineScope.launch {
             var fullVod = item
-            if (item.playLines.isEmpty()) {
+            if (fullVod.safePlayLines.isEmpty()) {
                 val targetSource = sources.find { it.id == item.sourceId } ?: activeSource
                 if (targetSource != null) {
                     try {
                         val detail = client.fetchVodDetail(targetSource, item.vodId)
                         fullVod = detail
                     } catch (e: Exception) {
-                        // Fallback
+                        e.printStackTrace()
                     }
+                }
+            }
+            if (fullVod.safePlayLines.isEmpty() && !fullVod.vodPlayUrl.isNullOrBlank()) {
+                val parsedLines = client.parsePlayLines(fullVod.vodPlayFrom ?: "", fullVod.vodPlayUrl ?: "")
+                if (parsedLines.isNotEmpty()) {
+                    fullVod = fullVod.copy(playLines = parsedLines)
                 }
             }
             activePlayer = PlayerState(
@@ -135,7 +141,7 @@ fun MainApp(
                             // Source Switcher Pill
                             Surface(
                                 shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier.clickable { showSourceSheet = true }
                             ) {
                                 Row(
@@ -152,11 +158,13 @@ fun MainApp(
                                     Text(
                                         text = activeSource?.name ?: "切换源",
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     Icon(
                                         imageVector = Icons.Default.ArrowDropDown,
                                         contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
@@ -309,8 +317,8 @@ fun MainApp(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(
-                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                        if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                        else MaterialTheme.colorScheme.surfaceVariant
                                     )
                                     .clickable {
                                         repository.setActiveSource(src.id)
@@ -320,17 +328,17 @@ fun MainApp(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = src.name,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         fontSize = 14.sp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
                                         text = "${src.group} · ${src.apiUrl}",
                                         fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1
                                     )
                                 }
@@ -338,7 +346,7 @@ fun MainApp(
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = "已选中",
-                                        tint = MaterialTheme.colorScheme.primary,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
