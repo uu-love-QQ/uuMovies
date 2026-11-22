@@ -44,3 +44,6 @@ android/.idea
 
 # Local toolchain
 rust-toolchain.toml.bak
+
+# User feedback / temporary screenshots
+feedback/
